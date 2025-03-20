@@ -6,23 +6,31 @@
 #include <sys/sem.h>    
 #include <signal.h>     
 #include <unistd.h>     
-#include <errno.h>      
+#include <errno.h> 
+#include <sys/wait.h>     
 #include "filosofar.h"  
 #define CLAVE 41211294392005
 
 void manejador_señales(int);
 
+int semaforo,mem_comp;
+
 //funcion para registrar la señal SIGINT
-void manejador_señales(int mem_comp){
+void manejador_señales(int sig){
+	fprintf(stderr,"Estoy en la manejadora");
 	if((shmctl(mem_comp,IPC_RMID,NULL))==-1){
 		perror("Error al eliminar la memoria compartida");
+	}
+	
+	if((semctl(semaforo,0,IPC_RMID))==-1){
+		perror("Error al eliminar los semaforos ");
 	}
 	
 	kill(getppid(),SIGINT);
 }
 
 int main (int argc,char *argv[]){
-	int semaforo,mem_comp,ret,direccion[10]={0},debugInfo[4], idfilosofo;
+	int ret,direccion[10]={0},debugInfo[4], nFilOsofo, filosofos[10],zonaActual, *punt_mem;
 	int num_semaforos,tamano_mem_comp;
 	struct DatosSimulaciOn *datos;
 	
@@ -44,10 +52,13 @@ int main (int argc,char *argv[]){
 	if((mem_comp=shmget(IPC_PRIVATE,4*tamano_mem_comp,IPC_CREAT | 0600))==-1){
 		perror("Error al crear la memoria compartida\n");
 	}
+
 	
 	if((datos = malloc(sizeof(struct DatosSimulaciOn)))==NULL){
 		perror("Error al reservar memoria\n");
 	}
+	
+	nFilOsofo = atoi(argv[2]);
 	
 	ret=atoi(argv[1]);
 	datos->maxFilOsofosEnPuente=9;
@@ -72,10 +83,73 @@ int main (int argc,char *argv[]){
               datos, semaforo, mem_comp,
               direccion);
         
-        //creacion de los filosofos da error por algo      
-	if((idfilosofo = FI_inicioFilOsofo(1))==-1){
-		perror("error al crear filosofos\n");
-	}
+        for(int i=0;i<nFilOsofo;i++){
+        	filosofos[i] = fork();
+        	if(filosofos[i] == 0){
+        		//creamos los filosofos
+        		FI_inicioFilOsofo(i);
+        		//codigo para andar en campo
+        		zonaActual=CAMPO;
+        		while(zonaActual == CAMPO){
+				if((FI_puedoAndar())==100){
+				FI_pausaAndar();
+				zonaActual = FI_andar();
+				}
+			}
+			//codigo para andar en puente
+			zonaActual = PUENTE;
+			if(zonaActual == PUENTE){
+				while(zonaActual == PUENTE){
+					if((FI_puedoAndar())==100){
+					FI_pausaAndar();
+					zonaActual = FI_andar();
+					}
+				}
+			}
+			//codigo para andar en campo despues de puente
+			zonaActual=CAMPO;
+        		while(zonaActual == CAMPO){
+				if((FI_puedoAndar())==100){
+				FI_pausaAndar();
+				zonaActual = FI_andar();
+				}
+			}
+			//codigo antesala
+			zonaActual=ANTESALA;
+        		while(zonaActual == ANTESALA){
+				if((FI_puedoAndar())==100){
+				FI_pausaAndar();
+				zonaActual = FI_andar();
+				}
+			}
+			
+			FI_entrarAlComedor(1);
+			//codigo para andar en la entrada del comedor
+			zonaActual=ENTRADACOMEDOR;
+        		while(zonaActual == ENTRADACOMEDOR){
+				if((FI_puedoAndar())==100){
+				FI_pausaAndar();
+				zonaActual = FI_andar();
+				}
+				
+				FI_cogerTenedor(TENEDORDERECHO);
+				FI_cogerTenedor(TENEDORIZQUIERDO);
+				//while(FI_comer() 
+			}
+			
+        	}
+        	else{
+        		printf("Error al crear filosofo");
+        	}
+        	
+        }
+        
+        //codigo del padre
+        for(int i=0;i<nFilOsofo;i++){
+        	waitpid(filosofos[i],NULL,0);
+        }
+        
+        //FI_fin();
 	
 	
 }
